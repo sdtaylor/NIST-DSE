@@ -189,19 +189,22 @@ class image_wrapper:
 
         return all_data.transpose()
 
-# For shapefile data, either either .shape file or as a 
-# multipolygon object
+# For shapefile data, either either a .shp filename, a
+# multipolygon object, or an image data (as a 0,1 mask)
+# which will be converted to a multipolygon
 class shapefile_wrapper:
-    def __init__(self, filename=None, shapefile_data=None):
+    def __init__(self, filename=None, multipolygon=None, image_mask=None):
         #Load the shapefile into a multipolygon
         if filename is not None:
             self.filename=filename
             self.file_object = fiona.open(filename)
             self._shapefile_to_multipolygon()
-        elif shapefile_data is not None:
+        elif multipolygon is not None:
             # should be a MultiPolygon object
             pass
-        else:
+        elif image_mask is not None:
+            self.image_mask = image_mask
+            self.multipolygon = 
             stop('Need filename or shapefile data')
             
     def _shapefile_to_multipolygon(self):
@@ -209,6 +212,24 @@ class shapefile_wrapper:
         for p in self.file_object:
             polygons.append(shapely.geometry.shape(p['geometry']))
         self.multipolygon = shapely.geometry.MultiPolygon(polygons)
+
+    #Convert a mask of 0,1 to a multipolygon
+    def _mask_to_polygons(self, mask):
+        all_polygons=[]
+        for shape, value in features.shapes(mask.astype(np.int16),
+                                            mask = (mask==1),
+                                            transform = self.transform):
+
+            all_polygons.append(shapely.geometry.shape(shape))
+
+        all_polygons = shapely.geometry.MultiPolygon(all_polygons)
+        if not all_polygons.is_valid:
+            all_polygons = all_polygons.buffer(0)
+            #Sometimes buffer() converts a simple Multipolygon to just a Polygon,
+            #need to keep it a Multi throughout
+            if all_polygons.type == 'Polygon':
+                all_polygons = shapely.geometry.MultiPolygon([all_polygons])
+        return all_polygons
 
     def _multipolygon_to_shapefile(self):
         pass
@@ -232,6 +253,9 @@ class plot_wrapper:
     def load_image(self, image_type, image_filename=None, image_data=None):
         self.images[image_type] = image_wrapper(filename=image_filename, image_data=image_data)
 
+    def load_predicted_polygons(self, polygons):
+        self.polygons_predict = polygons
+        
     #Pull class from an image and load it as a prediction
     def pull_prediction(self, class_type, image):
         assert class_type not in self.polygons_predict, 'Class prediction type already exists in plot'
