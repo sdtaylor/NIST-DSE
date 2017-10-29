@@ -6,8 +6,8 @@ from skimage.morphology import watershed
 from scipy import optimize
 
 class watershed_classifier:
-    def __init__(self):
-        self.fitted_params={}
+    def __init__(self, parameters=None):
+        self.fitted_parameters=parameters
     
     def apply_classifier(self, plot, maxima_min_distance, ndvi_threshold,
                          max_crown_radius):
@@ -56,12 +56,12 @@ class watershed_classifier:
         
         return error
     
-    def fit(self, plots):
+    def fit(self, plots, verbose=False):
         self.training_plots=plots
         #                   maxima_min_distance, ndvi_threshold, max_crown_radius
         parameter_ranges = (slice(1,20,1), slice(-1, 1,0.1), slice(1,40,1))
         
-        optimized_results = optimize.brute(self.scipy_error, parameter_ranges)
+        optimized_results = optimize.brute(self.scipy_error, parameter_ranges, disp=verbose)
         self.fitted_parameters = {'maxima_min_distance':int(optimized_results[0]),
                                   'ndvi_threshold':optimized_results[1],
                                   'max_crown_radius':int(optimized_results[2])}
@@ -70,8 +70,13 @@ class watershed_classifier:
         self.training_plots=None
         
     def predict(self, plots):
+        assert self.fitted_parameters is not None, 'Model parameters not fit'
         #Applys the watershed classifer
-        pass
+        for p in plots:
+            canopies = self.apply_classifier(p, **self.fitted_parameters)
+            p.load_prediction_mask(class_type='canopy',
+                                   mask = canopies)
+        return plots
 
     def _labels_from_watershed(self, height_image, ndvi_image, min_distance, ndvi_threshold,
                               return_coordinates=False):
