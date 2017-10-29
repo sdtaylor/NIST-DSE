@@ -44,7 +44,7 @@ train_plots = ['OSBS_001',
 test_plots = ['OSBS_002',
             'OSBS_004',
             'OSBS_005',
-            'OSBS_013', # cutoff chm image
+#            'OSBS_013', # cutoff chm image
             'OSBS_020',
             'OSBS_021',
             'OSBS_027',
