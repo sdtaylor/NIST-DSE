@@ -3,7 +3,7 @@ import pandas as pd
 from skimage.feature import peak_local_max
 from scipy import ndimage as ndi
 from skimage.morphology import watershed
-
+from scipy import optimize
 
 class watershed_classifier:
     def __init__(self):
@@ -11,6 +11,7 @@ class watershed_classifier:
     
     def apply_classifier(self, plot, maxima_min_distance, ndvi_threshold,
                          max_crown_radius):
+        #print(maxima_min_distance, ndvi_threshold, max_crown_radius)
         # this is where I get nd
         labels, coordinates = self._labels_from_watershed(height_image = plot.images['chm'].image_data,
                                                           ndvi_image = plot.images['ndvi'].image_data,
@@ -34,17 +35,40 @@ class watershed_classifier:
         for p in plots:
             canopies = self.apply_classifier(p, **parameters)
             p.load_prediction_mask(class_type='canopy',
-                                   predict = canopies)
+                                   mask = canopies)
             errors.append(p.get_jaccard_error(class_type='canopy'))
         
         return(np.mean(errors))
     
-    def fit(self, plots):
-        #Fits the parameters for doing watershed classification
+    # A go between to translate the tuple from scipy.optimize functions
+    # into a dictionary of model parameters
+    def scipy_error(self,x):
+        parameters = {'maxima_min_distance':int(x[0]),
+                      'ndvi_threshold':x[1],
+                      'max_crown_radius':int(x[2])}
         
+        # Unreasonable parameters which throw cause an error get large error 
+        # values
+        try:
+            error = self.get_error(plots=self.training_plots, **parameters) * -1
+        except:
+            error = 100
         
-        pass
+        return error
     
+    def fit(self, plots):
+        self.training_plots=plots
+        #                   maxima_min_distance, ndvi_threshold, max_crown_radius
+        parameter_ranges = (slice(1,20,1), slice(-1, 1,0.1), slice(1,40,1))
+        
+        optimized_results = optimize.brute(self.scipy_error, parameter_ranges)
+        self.fitted_parameters = {'maxima_min_distance':int(optimized_results[0]),
+                                  'ndvi_threshold':optimized_results[1],
+                                  'max_crown_radius':int(optimized_results[2])}
+    
+        # Clear memory
+        self.training_plots=None
+        
     def predict(self, plots):
         #Applys the watershed classifer
         pass
