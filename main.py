@@ -3,7 +3,7 @@ import utils
 import classifiers
 import framework as F
 
-training_plots = F.load_plots(plot_list = config.train_plots[1:3], plot_type= 'train')
+training_plots = F.load_plots(plot_list = config.train_plots, plot_type= 'train')
 testing_plots = F.load_plots(plot_list = config.test_plots, plot_type= 'test')
 
 
@@ -16,9 +16,9 @@ for p in testing_plots:
     p.load_image(image_type='ndvi', image_data=ndvi_data)
 
 # some predifined  parameters for testing
-parameters = {'maxima_min_distance':9,
-              'ndvi_threshold':0.9,
-              'max_crown_radius':6}
+#parameters = {'maxima_min_distance':9,
+#              'ndvi_threshold':0.9,
+#              'max_crown_radius':6}
 
 #model = watershed_classifier(parameters=parameters)
 model = classifiers.watershed_classifier()
