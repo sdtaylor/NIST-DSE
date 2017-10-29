@@ -8,9 +8,7 @@ import fiona
 import rasterio
 from rasterio import plot
 from rasterio import features
-#from utils import *
-from config import *
-
+import config
 
 #Wrapper for individual images. Either RGB, P, M, etc.
 class image_wrapper:
@@ -305,7 +303,7 @@ class plot_wrapper:
         return tp / (tp + fp + fn)
 
 #Load a list of testing plots
-def load_plots(plot_list, plot_type, image_types=image_types_to_load):
+def load_plots(plot_list, plot_type, image_types=config.image_types_to_load):
     all_plot_data=[]
     for i, plot_id in enumerate(plot_list):
         plot_data = plot_wrapper(plot_id)
@@ -313,16 +311,16 @@ def load_plots(plot_list, plot_type, image_types=image_types_to_load):
 
         for image_type in image_types:
             if image_type=='hs':
-                image_path = hs_image_dir + plot_id+'_hyper.tif'
+                image_path = config.hs_image_dir + plot_id+'_hyper.tif'
             elif image_type=='chm':
-                image_path = chm_image_dir + plot_id+'_chm.tif'
+                image_path = config.chm_image_dir + plot_id+'_chm.tif'
 
             plot_data.load_image(image_type, image_path)
 
         plot_data.set_transform('chm')
         # Load canopy shapefiles for training data
         if plot_type=='train':
-            shapefile_path = training_polygons_dir+'ITC_'+plot_id+'.shp'
+            shapefile_path = config.training_polygons_dir+'ITC_'+plot_id+'.shp'
             plot_data.load_train_polygons(class_type = 'canopy',
                                           filename = shapefile_path)
         
