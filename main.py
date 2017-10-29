@@ -5,8 +5,8 @@ from classifiers import *
 
 
 
-training_plots = load_plots(plot_list = train_plots[1:3], plot_type= 'train')
-testing_plots = load_plots(plot_list = test_plots[1:3], plot_type= 'test')
+training_plots = load_plots(plot_list = train_plots, plot_type= 'train')
+testing_plots = load_plots(plot_list = test_plots, plot_type= 'test')
 
 
 # Give all plots an NDVI image
@@ -22,9 +22,10 @@ parameters = {'maxima_min_distance':9,
               'ndvi_threshold':0.9,
               'max_crown_radius':6}
 
-model = watershed_classifier(parameters=parameters)
+#model = watershed_classifier(parameters=parameters)
+model = watershed_classifier()
 
-#model.fit(training_plots)
+model.fit(training_plots)
 
 testing_plots = model.predict(testing_plots)
 
