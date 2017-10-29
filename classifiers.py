@@ -1,5 +1,8 @@
 import numpy as np
 import pandas as pd
+from skimage.feature import peak_local_max
+from scipy import ndimage as ndi
+from skimage.morphology import watershed
 
 
 class watershed_classifier:
@@ -9,7 +12,7 @@ class watershed_classifier:
     def apply_classifier(self, plot, maxima_min_distance, ndvi_threshold,
                          max_crown_radius):
         # this is where I get nd
-        labels, coordinates = self._labels_from_watershed(height_image = plot.images['height'].image_data,
+        labels, coordinates = self._labels_from_watershed(height_image = plot.images['chm'].image_data,
                                                           ndvi_image = plot.images['ndvi'].image_data,
                                                           min_distance = maxima_min_distance,
                                                           ndvi_threshold = ndvi_threshold,
@@ -19,22 +22,22 @@ class watershed_classifier:
                                                        radius=max_crown_radius)
         labels[~buffer_circles] = 0
         
+        # Make all canopies the same ID for the time being
+        labels[labels!=0]=1
+        
         return(labels)
 
         
     def get_error(self, plots, **parameters):
         # gets the jaccard error given the parameters
-        predicted_canopies=[]
+        errors=[]
         for p in plots:
             canopies = self.apply_classifier(p, **parameters)
-            p.load_prediction(class_type='canopy',
-                              predict = canopies,
-                              reshape=False)
-            
-            
+            p.load_prediction_mask(class_type='canopy',
+                                   predict = canopies)
+            errors.append(p.get_jaccard_error(class_type='canopy'))
         
-        # Make all canopies the same ID for the time being
-        labels[labels!=0]=1
+        return(np.mean(errors))
     
     def fit(self, plots):
         #Fits the parameters for doing watershed classification
@@ -55,12 +58,14 @@ class watershed_classifier:
                                      min_distance=min_distance,
                                      labels=height_mask,
                                      threshold_abs=2, indices= False)
-        coordinates = peak_local_max(height_image, 
-                                     min_distance=min_distance,
-                                     labels=height_mask,
-                                     threshold_abs=2, indices= True)
+        if return_coordinates:
+            coordinates = peak_local_max(height_image, 
+                                         min_distance=min_distance,
+                                         labels=height_mask,
+                                         threshold_abs=2, indices= True)
+        
         markers = ndi.label(local_maxi)[0]
-        labels = watershed(-chm_image, markers, mask=height_mask)
+        labels = watershed(-height_image, markers, mask=height_mask)
         
         if return_coordinates:
             return labels, coordinates

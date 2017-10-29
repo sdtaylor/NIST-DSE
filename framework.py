@@ -28,10 +28,14 @@ class image_wrapper:
         #Multiband vs single band images
         if len(self.image_data.shape)==3:
             self.bands, self.H, self.W = self.image_data.shape
+            
+            # Don't store the band dimension if it's only a single band
+            if self.bands==1:
+                self.image_data = self.image_data[0]
         else:
             self.H, self.W = self.image_data.shape
-            self.bands=1
-
+            self.bands=1.
+            
         #Containers for class_types. polygons are a shapely
         #multipolygon object. masks are a (0,1) mask the same shape as the image
         self.class_masks={}
@@ -193,7 +197,8 @@ class image_wrapper:
 # multipolygon object, or an image data (as a 0,1 mask)
 # which will be converted to a multipolygon
 class shapefile_wrapper:
-    def __init__(self, filename=None, multipolygon=None, image_mask=None):
+    def __init__(self, filename=None, multipolygon=None, image_mask=None,
+                 transform=None):
         #Load the shapefile into a multipolygon
         if filename is not None:
             self.filename=filename
@@ -203,8 +208,11 @@ class shapefile_wrapper:
             # should be a MultiPolygon object
             pass
         elif image_mask is not None:
+            assert transform is not None,'transform must be set to load mask'
+            self.transform = transform
             self.image_mask = image_mask
-            self.multipolygon = 
+            self.multipolygon = self._mask_to_multipolygon(image_mask)
+        else:
             stop('Need filename or shapefile data')
             
     def _shapefile_to_multipolygon(self):
@@ -212,9 +220,8 @@ class shapefile_wrapper:
         for p in self.file_object:
             polygons.append(shapely.geometry.shape(p['geometry']))
         self.multipolygon = shapely.geometry.MultiPolygon(polygons)
-
     #Convert a mask of 0,1 to a multipolygon
-    def _mask_to_polygons(self, mask):
+    def _mask_to_multipolygon(self, mask):
         all_polygons=[]
         for shape, value in features.shapes(mask.astype(np.int16),
                                             mask = (mask==1),
@@ -226,7 +233,7 @@ class shapefile_wrapper:
         if not all_polygons.is_valid:
             all_polygons = all_polygons.buffer(0)
             #Sometimes buffer() converts a simple Multipolygon to just a Polygon,
-            #need to keep it a Multi throughout
+            #need to keep it a Multipolygon throughout
             if all_polygons.type == 'Polygon':
                 all_polygons = shapely.geometry.MultiPolygon([all_polygons])
         return all_polygons
@@ -234,6 +241,7 @@ class shapefile_wrapper:
     def _multipolygon_to_shapefile(self):
         pass
     def write_shapefile(self, new_filename):
+        # Write the multipolygon object as a shapefile
         pass
 
 
@@ -245,30 +253,47 @@ class plot_wrapper:
         self.images={}
 
         self.polygons = {}
-        #self.polygons_predict = {}
+        self.polygons_predict = {}
 
-    def load_train_polygons(self, filename):
-        self.train_polygons=shapefile_wrapper(filename=filename)
+    def load_train_polygons(self, class_type, filename):
+        self.polygons[class_type]=shapefile_wrapper(filename=filename)
 
     def load_image(self, image_type, image_filename=None, image_data=None):
         self.images[image_type] = image_wrapper(filename=image_filename, image_data=image_data)
 
-    def load_predicted_polygons(self, polygons):
-        self.polygons_predict = polygons
+    # Set this images transform info from either a loaded image
+    # or directly
+    def set_transform(self, image_type=None, transform=None):
+        if image_type is not None:
+            assert image_type in self.images, 'Cannot set transform, image not loaded: '+image_type
+            self.transform = self.images[image_type].transform
+        elif transform is not None:
+            self.transform = transform
+        else:
+            print('Transform not set')
+        
+    # Load a mask of 0,1 where 1 is the predicted canopy area
+    # This will convert it to a multipolygon object
+    def load_prediction_mask(self, class_type, mask):
+        self.polygons_predict[class_type] = shapefile_wrapper(image_mask=mask,
+                                                              transform=self.transform)
         
     #Pull class from an image and load it as a prediction
     def pull_prediction(self, class_type, image):
         assert class_type not in self.polygons_predict, 'Class prediction type already exists in plot'
         self.polygons_predict[class_type] = self.images[image].get_polygon_prediction(class_type)
 
-    #Pull class from one or all of the images
-    def pull_class(self, class_type, image):
-        assert class_type not in self.polygons, 'Class type already exists in plot'
-        self.polygons[class_type] = self.images[image].get_polygon(class_type)
+    # Calculate jaccard error for a given class beween polygons and polygons_predict
+    def get_jaccard_error(self, class_type):
+        assert class_type in self.polygons, class_type+' not in polygons dictionary'
+        assert class_type in self.polygons_predict, class_type+' not in polygons_predict dictionary'
 
-    #Apply a new class type to the image
-    def push_class(self, class_type, image):
-        self.images[image].load_class_polygon(class_type, self.polygons[class_type])
+        actual = self.polygons[class_type].multipolygon
+        predicted   = self.polygons_predict[class_type].multipolygon
+        tp = actual.intersection(predicted).area
+        fp = predicted.area - tp
+        fn = actual.area - tp
+        return tp / (tp + fp + fn)
 
     #Calculate and store all scores for class predictions
     def calculate_class_scores(self):
@@ -334,10 +359,12 @@ def load_plots(plot_list, plot_type, image_types=image_types_to_load):
 
             plot_data.load_image(image_type, image_path)
 
+        plot_data.set_transform('chm')
         # Load canopy shapefiles for training data
         if plot_type=='train':
             shapefile_path = training_polygons_dir+'ITC_'+plot_id+'.shp'
-            plot_data.load_train_polygons(shapefile_path)
+            plot_data.load_train_polygons(class_type = 'canopy',
+                                          filename = shapefile_path)
         
         all_plot_data.append(plot_data)
 

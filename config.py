@@ -11,7 +11,7 @@ image_types_to_load=['hs','chm']
 
 train_plots = ['OSBS_001',
                 'OSBS_003',
-                'OSBS_006',
+                'OSBS_006', # missing rgb for this one
                 'OSBS_007',
                 'OSBS_008',
                 'OSBS_009',
