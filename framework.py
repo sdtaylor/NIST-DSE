@@ -240,9 +240,18 @@ class shapefile_wrapper:
 
     def _multipolygon_to_shapefile(self):
         pass
-    def write_shapefile(self, new_filename):
+    def write_shapefile(self, new_filename, plot_id):
         # Write the multipolygon object as a shapefile
-        pass
+        schema = {'geometry':'Polygon',
+                   'properties':{'Plot_ID':'str',
+                                 'crown_id':'int'}}
+        with fiona.collection(new_filename, 'w',
+                              'ESRI Shapefile', schema) as output:
+            for crown_id, polygon in enumerate(self.multipolygon,1):
+                output.write({'properties': {'Plot_ID':plot_id,
+                                             'crown_id':crown_id},
+                              'geometry':shapely.geometry.mapping(polygon)
+                            })
 
 
 
@@ -278,11 +287,11 @@ class plot_wrapper:
         self.polygons_predict[class_type] = shapefile_wrapper(image_mask=mask,
                                                               transform=self.transform)
         
-    #Pull class from an image and load it as a prediction
-    def pull_prediction(self, class_type, image):
-        assert class_type not in self.polygons_predict, 'Class prediction type already exists in plot'
-        self.polygons_predict[class_type] = self.images[image].get_polygon_prediction(class_type)
-
+    def write_prediction(self, class_type, new_filename):
+        assert class_type in self.polygons_predict, class_type+' not in polygons_predict'
+        self.polygons_predict[class_type].write_shapefile(new_filename=new_filename,
+                                                          plot_id = self.plot_id)
+        
     # Calculate jaccard error for a given class beween polygons and polygons_predict
     def get_jaccard_error(self, class_type):
         assert class_type in self.polygons, class_type+' not in polygons dictionary'
@@ -294,55 +303,6 @@ class plot_wrapper:
         fp = predicted.area - tp
         fn = actual.area - tp
         return tp / (tp + fp + fn)
-
-    #Calculate and store all scores for class predictions
-    def calculate_class_scores(self):
-        self.class_scores={}
-        for class_type in range(1,11):
-            this_class_scores={}
-            if class_type not in self.polygons_predict:
-                continue
-            this_class_scores['tp'] = self.polygons[class_type].intersection(self.polygons_predict[class_type]).area
-            this_class_scores['fp'] = self.polygons_predict[class_type].area - this_class_scores['tp']
-            this_class_scores['fn'] = self.polygons[class_type].area - this_class_scores['tp']
-            jaccard_denominator = np.sum([this_class_scores[m] for m in ['tp','fp','fn']])
-            this_class_scores['jaccard']  = this_class_scores['tp'] / jaccard_denominator if jaccard_denominator > 0 else 0
-            self.class_scores[class_type]=this_class_scores
-
-    #return true positive, false positive, false negative, jaccard score
-    def get_class_score(self, class_type):
-        assert self.plot_type != 'test', 'plot is training, cannot calculate score'
-        #assert class_type in self.polygons_predict, 'Class type not in predictions'
-        if class_type not in self.polygons_predict:
-            return None
-
-        tp = self.class_scores[class_type]['tp']
-        fp = self.class_scores[class_type]['fp']
-        fn = self.class_scores[class_type]['fn']
-        jaccard = self.class_scores[class_type]['jaccard']
-        return(tp,fp,fn,jaccard)
-
-    #Get a list of dicts of predictions for submission
-    def get_wkt_prediction(self):
-        all_class_predictions=[]
-        for class_type in range(1,11):
-            if self.polygons_predict[class_type].type == 'GeometryCollection':
-                wkt_predicted = 'MULTIPOLYGON EMPTY'
-            else:
-                wkt_predicted = self.polygons_predict[class_type].wkt
-
-            all_class_predictions.append({'ImageId':self.plot_id,
-                                         'ClassType':class_type,
-                                         'MultipolygonWKT':wkt_predicted})
-        return all_class_predictions
-
-    #Apply any new classes to the images
-    def update_all_image_polygons(self):
-        for image_type, image_object in self.images.items():
-            for class_type, polygon in self.polygons.items():
-                if class_type not in image_object.class_polygons:
-                    image_object.load_class_polygon(class_type, polygon)
-
 
 #Load a list of testing plots
 def load_plots(plot_list, plot_type, image_types=image_types_to_load):
