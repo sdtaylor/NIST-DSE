@@ -36,15 +36,15 @@ train_plots = ['OSBS_001',
                 'OSBS_037',
                 'OSBS_038',
                 'OSBS_042',
-                'OSBS_043',
-                'OSBS_044',
+#                'OSBS_043', # cutoff chm image
+#                'OSBS_044', # cutoff chm image
                 'OSBS_048',
                 'OSBS_051']
 
 test_plots = ['OSBS_002',
             'OSBS_004',
             'OSBS_005',
-            'OSBS_013',
+            'OSBS_013', # cutoff chm image
             'OSBS_020',
             'OSBS_021',
             'OSBS_027',
