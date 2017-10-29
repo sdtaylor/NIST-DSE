@@ -46,14 +46,15 @@ class watershed_classifier:
         parameters = {'maxima_min_distance':int(x[0]),
                       'ndvi_threshold':x[1],
                       'max_crown_radius':int(x[2])}
-        
+
         # Unreasonable parameters which throw cause an error get large error 
         # values
         try:
             error = self.get_error(plots=self.training_plots, **parameters) * -1
         except:
             error = 100
-        
+        print('Error: '+str(error)+', with:')
+        print(parameters)
         return error
     
     def fit(self, plots, verbose=False):
