@@ -1,12 +1,13 @@
 #################################################################
 #Config
-hs_image_dir='/home/shawn/data/nist/ECODSEdataset/RSdata/hs/'
-chm_image_dir='/home/shawn/data/nist/ECODSEdataset/RSdata/chm/'
-rgb_image_dir='/home/shawn/data/nist/ECODSEdataset/RSdata/camera/'
+base_data_dir='/home/shawn/data/nist/ECODSEdataset/'
+hs_image_dir = base_data_dir + 'RSdata/hs/'
+chm_image_dir= base_data_dir + 'RSdata/chm/'
+rgb_image_dir= base_data_dir + 'RSdata/camera/'
 
-training_polygons_dir = '/home/shawn/data/nist/ECODSEdataset/Task1/ITC/'
+training_polygons_dir = base_data_dir + 'Task1/ITC/'
 
-prediction_polygons_dir = '/home/shawn/data/nist/ECODSEdataset/Task1/predictions/'
+prediction_polygons_dir = base_data_dir + 'Task1/predictions/'
 
 image_types_to_load=['hs','chm']
 
