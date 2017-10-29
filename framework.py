@@ -218,6 +218,9 @@ class shapefile_wrapper:
         for p in self.file_object:
             polygons.append(shapely.geometry.shape(p['geometry']))
         self.multipolygon = shapely.geometry.MultiPolygon(polygons)
+        
+        if not self.multipolygon.is_valid:
+            self.multipolygon = self.multipolygon.buffer(0)
     #Convert a mask of 0,1 to a multipolygon
     def _mask_to_multipolygon(self, mask):
         all_polygons=[]
