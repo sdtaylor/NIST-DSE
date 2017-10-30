@@ -60,7 +60,7 @@ class watershed_classifier:
     def fit(self, plots, verbose=False):
         self.training_plots=plots
         #                   maxima_min_distance, ndvi_threshold, max_crown_radius
-        parameter_ranges = (slice(1,20,1), slice(-1, 1,0.05), slice(1,10,1))
+        parameter_ranges = (slice(1,20,1), slice(-1, 1,0.02), slice(1,12,1))
         
         optimized_results = optimize.brute(self.scipy_error, parameter_ranges, disp=verbose)
         self.fitted_parameters = {'maxima_min_distance':int(optimized_results[0]),
