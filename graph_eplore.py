@@ -57,6 +57,7 @@ class chm_graph:
         self.image = i
         self.make_p_dag()
         self.make_h_dag()
+        self.assign_h_dag_values()
         
         # The H dag nodes will be named the top level nodes from
         # the patch dag
@@ -64,10 +65,12 @@ class chm_graph:
         #self.h_dag.add_nodes_from(self.h_dag_nodes)
     
     # if two top level p_dag nodes share any patch
-    def shares_patches(self, node_1, node_2):
+    def get_shared_patches(self, node_1, node_2):
         node_1_patches = np.array(list(nx.descendants(self.p_dag, node_1)))
         node_2_patches = np.array(list(nx.descendants(self.p_dag, node_2)))
-        return np.any(np.in1d(node_1_patches, node_2_patches, assume_unique=True))
+        shared = np.in1d(node_1_patches, node_2_patches)
+        return(node_1_patches[shared])
+        #return np.any(np.in1d(node_1_patches, node_2_patches, assume_unique=True))
     
     def fill_edges(self):
         pass
@@ -75,6 +78,23 @@ class chm_graph:
     # The actual image value of a p-dag node
     def node_image_value(self, node):
         return self.image[self.node_lookup_table==node][0]
+    
+    def node_location(self, node, with_z=False):
+        loc = np.where(self.node_lookup_table==node)
+        x, y = loc[0][0], loc[1][0]
+        if with_z:
+            z = self.node_image_value(node)
+            return x,y,z
+        else:
+            return x,y
+    
+    # Should work in either 2d or 3d
+    # euclidean distance of the array locations for now
+    def get_node_distance(self, node1, node2, with_z=False):
+        node1_loc = np.array(self.node_location(node1, with_z = with_z))
+        node2_loc = np.array(self.node_location(node2, with_z = with_z))
+        return np.sqrt(np.sum((node1_loc - node2_loc)**2))
+        
     
     def get_top_level_nodes(self, g):
         top_level_nodes=[]
@@ -84,20 +104,54 @@ class chm_graph:
         return top_level_nodes
 
     # DAG from a patch dag, where nodes are the full heirarchies and
-    # edges are made when the heirarchies share cells. Weights
-    # are calculated based on various stats within and among h_dags. 
+    # edges are made when the heirarchies share cells. . 
     def make_h_dag(self):
         self.h_dag = nx.DiGraph()
         self.parent_nodes = self.get_top_level_nodes(self.p_dag)
         self.h_dag.add_nodes_from(self.parent_nodes)
         
         for node1, node2 in combinations(self.parent_nodes,2):
-            if self.shares_patches(node1, node2):
+            shared_patches = self.get_shared_patches(node1, node2)
+            if len(shared_patches)>0:
                 if self.node_image_value(node1) > self.node_image_value(node2):
                     self.h_dag.add_edge(node1, node2)
+                    self.h_dag[node1][node2]['shared_patches'] = shared_patches
                 else:
                     self.h_dag.add_edge(node2, node1)
+                    self.h_dag[node2][node1]['shared_patches'] = shared_patches
 
+    def assign_h_dag_values(self):
+        for node1, node2 in list(self.h_dag.edges):
+            cohesion_criteria = {}
+            cohesion_criteria['LD'] = self.level_depth(node1, node2)
+            cohesion_criteria['SR'] = self.shared_ratio(node1, node2)
+            cohesion_criteria['TD'] = self.top_distance(node1, node2)
+            self.h_dag[node1][node2]['cohesion'] = cohesion_criteria
+
+    #These are all the different cohesion criteria between h-dag nodes
+    def level_depth(self, node1, node2):
+        contact_node_heights=[]
+        for shared_patch in self.h_dag[node1][node2]['shared_patches']:
+            contact_node_heights.append(self.node_image_value(shared_patch))
+        node1_min_height = np.min(self.node_image_value(node1) - contact_node_heights)
+        node2_min_height = np.min(self.node_image_value(node2) - contact_node_heights)
+        return 1/np.min([node1_min_height, node2_min_height])
+        
+    # The minimum number of cell steps to reach a contact cell
+    # note sure how to do this yet...
+    def node_depth(self, node1, node2):
+        pass
+
+    def shared_ratio(self, node1, node2):
+        node1_total_cells = len(nx.descendants(self.p_dag, node1))
+        node2_total_cells = len(nx.descendants(self.p_dag, node2))
+        total_shared_cells = len(self.h_dag[node1][node2]['shared_patches'])
+        return total_shared_cells / (node1_total_cells + node2_total_cells)
+    
+    # Horizonatl distance between parent cells
+    def top_distance(self, node1, node2):
+        return self.get_node_distance(node1, node2)
+    
     # Directed acrylic graph from a 2d image, where children are
     # any neighbor cell with a lower value
     def make_p_dag(self):
