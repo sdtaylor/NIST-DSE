@@ -53,22 +53,30 @@ def make_dag(i):
     node_lookup_table = np.arange(num_elements).reshape(i.shape)
     
     h_dag = nx.DiGraph()
-    h_dag.add_nodes_from(range(num_elements))
+    #h_dag.add_nodes_from(range(num_elements))
     
     # Add a buffer so that a 3x3 moving window will work on edges
     # np.inf ensures the buffer is never considered in dag
     i = np.pad(i, (1,1), mode='constant', constant_values=np.inf)
+    
+    # Set the ground to infinity so they are not counted as children
+    i[i==0] = np.inf
     
     #This will iterate over every cell and consider the 8 neighbors
     win_view = view_as_windows(i, (3,3))
     for win_view_row in range(win_view.shape[0]):
         for win_view_col in range(win_view.shape[1]):
             focal_value = win_view[win_view_row, win_view_col][1,1]
+            # Cannot be parent if it's ground
+            if np.isinf(focal_value):
+                continue
             focal_node = node_lookup_table[win_view_row, win_view_col]
             child_rows, child_cols = np.where(win_view[win_view_row, win_view_col] < focal_value)
             for i in range(len(child_rows)):
                 child_node = node_lookup_table[win_view_row+child_rows[i]-1, 
                                                win_view_col+child_cols[i]-1]
+                h_dag.add_nodes_from([focal_node,child_node])
+
                 h_dag.add_edge(focal_node, child_node)
     
     return h_dag
