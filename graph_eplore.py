@@ -1,9 +1,8 @@
 from skimage.external import tifffile
 import matplotlib.pyplot as plt
-from skimage.util import view_as_windows
 from scipy.sparse import csgraph
 import numpy as np
-
+import networkx as nx
 
 chm_image = tifffile.imread('OSBS_006_chm.tif')
 
@@ -37,25 +36,54 @@ chm_3d = np.logical_and(chm_3d >= level_lower_limit , chm_3d < level_upper_limit
 # redo this by hand  for edges.
 # =============================================================================
 
+# Use a 10x10 plot for testing
+#chm_image = chm_image[0:5,0:5]
 
 num_elements = np.prod(chm_image.shape)
 node_lookup_table = np.arange(num_elements).reshape(chm_image.shape)
-dense_graph = np.zeros((num_elements, num_elements))
 
-smoother = view_as_windows(chm_image, (3,3))
-for smoother_row in range(smoother.shape[0]):
-    for smoother_col in range(smoother.shape[1]):
-        focal_value = smoother[smoother_row, smoother_col][1,1]
-        focal_node = node_lookup_table[smoother_row+1, smoother_col+1]
-        child_row, child_col = np.where(smoother[smoother_row, smoother_col] < focal_value)
-        for i in range(len(child_row)):
-            child_node = node_lookup_table[smoother_row+child_row[i], 
-                                           smoother_col+child_col[i]]
-            dense_graph[focal_node,child_node]=1
-            #dense_graph[child_node,focal_node]=1
+h_dag = nx.DiGraph()
+h_dag.add_nodes_from(range(num_elements))
 
-# Redo for the edges
-# ... someday
+# Directed acrylic graph from a 2d image, where children are
+# any neighbor cell with a lower value
+from skimage.util import view_as_windows
+def make_dag(i):
+    num_elements = np.prod(i.shape)
+    node_lookup_table = np.arange(num_elements).reshape(i.shape)
+    
+    h_dag = nx.DiGraph()
+    h_dag.add_nodes_from(range(num_elements))
+    
+    # Add a buffer so that a 3x3 moving window will work on edges
+    # np.inf ensures the buffer is never considered in dag
+    i = np.pad(i, (1,1), mode='constant', constant_values=np.inf)
+    
+    #This will iterate over every cell and consider the 8 neighbors
+    win_view = view_as_windows(i, (3,3))
+    for win_view_row in range(win_view.shape[0]):
+        for win_view_col in range(win_view.shape[1]):
+            focal_value = win_view[win_view_row, win_view_col][1,1]
+            focal_node = node_lookup_table[win_view_row, win_view_col]
+            child_rows, child_cols = np.where(win_view[win_view_row, win_view_col] < focal_value)
+            for i in range(len(child_rows)):
+                child_node = node_lookup_table[win_view_row+child_rows[i]-1, 
+                                               win_view_col+child_cols[i]-1]
+                h_dag.add_edge(focal_node, child_node)
+    
+    return h_dag
+
+
+def get_top_level_nodes(di_graph):
+    top_level_nodes=[]
+    for node in list(di_graph.nodes):
+        if len(list(di_graph.predecessors(node)))==0:
+            top_level_nodes.append(node)
+    return top_level_nodes
+
+
+h_dag = make_dag(chm_image)
+
 
 
 
