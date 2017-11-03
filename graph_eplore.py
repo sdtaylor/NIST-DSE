@@ -6,38 +6,8 @@ import networkx as nx
 
 chm_image = tifffile.imread('OSBS_006_chm.tif')
 
-def levels_to_3d(a, H, W):
-    levels_3d = np.expand_dims(a, axis=0)
-    levels_3d = np.expand_dims(levels_3d, axis=0)
-    levels_3d = np.repeat(levels_3d, W, 1)
-    levels_3d = np.repeat(levels_3d, H, 0)
-    return levels_3d
-
-def image_to_3d(i, num_levels):
-    i = np.expand_dims(i, axis=2)
-    return np.repeat(i, num_levels, axis=2)
-
-horizontal_levels = np.array(range(1,23,2))
-level_lower_limit = levels_to_3d(horizontal_levels - 1, 80,80)
-level_upper_limit = levels_to_3d(horizontal_levels + 1, 80,80)
-
-# A (H, W, h_levels) image of zeros
-chm_3d = image_to_3d(chm_image, num_levels=len(horizontal_levels))
-
-chm_3d = np.logical_and(chm_3d >= level_lower_limit , chm_3d < level_upper_limit)
-
-
-
-# =============================================================================
-# do 3x3 smoother
-# for every element (starts with element 1,1)(parent):
-#     for every adjacent element that is smaller (child):
-#         add to graph (parent -> child)
-# redo this by hand  for edges.
-# =============================================================================
-
 # Use a 10x10 plot for testing
-#chm_image = chm_image[0:5,0:5]
+chm_image = chm_image[0:30,0:30]
 
 num_elements = np.prod(chm_image.shape)
 node_lookup_table = np.arange(num_elements).reshape(chm_image.shape)
@@ -55,25 +25,21 @@ from itertools import combinations
 class chm_graph:
     def __init__(self, i):
         self.image = i
-        self.make_cell_dag()
-        self.make_h_dag()
-        self.assign_h_dag_values()
         
+        # The initial dag from all gridded cell values
+        self.make_cell_dag()
+        
+        # The heiarchichal dag
+        self.make_h_dag()
+        # The cohesion values
+        self.assign_h_dag_values()
+
         # The H dag nodes will be named the top level nodes from
         # the patch dag
         #self.h_dag_nodes = get_top_level_nodes(self.cell_dag)
         #self.h_dag.add_nodes_from(self.h_dag_nodes)
     
-    # if two top level cell_dag nodes share any patch
-    def get_shared_patches(self, p_node1, p_node2):
-        p_node1_patches = np.array(list(nx.descendants(self.cell_dag, p_node1)))
-        p_node2_patches = np.array(list(nx.descendants(self.cell_dag, p_node2)))
-        shared = np.in1d(p_node1_patches, p_node2_patches)
-        return(p_node1_patches[shared])
-    
-    def fill_edges(self):
-        pass
-    
+   
     # The actual image value of a p-dag node
     def node_image_value(self, node):
         return self.image[self.node_lookup_table==node][0]
@@ -93,8 +59,7 @@ class chm_graph:
         node1_loc = np.array(self.node_location(node1, with_z = with_z))
         node2_loc = np.array(self.node_location(node2, with_z = with_z))
         return np.sqrt(np.sum((node1_loc - node2_loc)**2))
-        
-    
+            
     def get_top_level_nodes(self, g):
         top_level_nodes=[]
         for node in list(g.nodes):
@@ -102,6 +67,9 @@ class chm_graph:
                 top_level_nodes.append(node)
         return top_level_nodes
 
+    ##############################################
+    # Functions for for bulding the H-DAG
+    ##############################################
     # DAG from a patch dag, where nodes are the full heirarchies and
     # edges are made when the heirarchies share cells. . 
     def make_h_dag(self):
@@ -119,6 +87,13 @@ class chm_graph:
                     self.h_dag.add_edge(p_node2, p_node1)
                     self.h_dag[p_node2][p_node1]['shared_patches'] = shared_patches
 
+    # Shared cells between two parent heiarchies.
+    def get_shared_patches(self, p_node1, p_node2):
+        p_node1_patches = np.array(list(nx.descendants(self.cell_dag, p_node1)))
+        p_node2_patches = np.array(list(nx.descendants(self.cell_dag, p_node2)))
+        shared = np.in1d(p_node1_patches, p_node2_patches)
+        return(p_node1_patches[shared])
+
     def assign_h_dag_values(self):
         for p_node1, p_node2 in list(self.h_dag.edges):
             cohesion_criteria = {}
@@ -127,7 +102,55 @@ class chm_graph:
             cohesion_criteria['TD'] = self.top_distance(p_node1, p_node2)
             self.h_dag[p_node1][p_node2]['cohesion'] = cohesion_criteria
 
-    #These are all the different cohesion criteria between h-dag nodes
+    ##############################################
+    # Functions for actually doing the segmentation of trees
+    ##############################################
+    def apply_segmentation(self, wt, weights):
+        self.create_prediction_h_dag()
+        self.apply_edge_weights(**weights)
+        self.cut_weak_edges(wt)
+
+    def apply_edge_weights(self, **weights):
+        for p_node1, p_node2 in list(self.h_dag_predict.edges):
+            cohesion = self.h_dag[p_node1][p_node2]['cohesion']
+            edge_weight = 0
+            for cohesion_param, cohesion_value in cohesion.items():
+                edge_weight += cohesion_value * weights[cohesion_param]
+            self.h_dag_predict[p_node1][p_node2]['WE']=edge_weight
+
+    def cut_weak_edges(self, wt):
+        for p_node1, p_node2 in list(self.h_dag_predict.edges):
+            if self.h_dag_predict[p_node1][p_node2]['WE'] < wt:
+                self.h_dag_predict.remove_edge(p_node1, p_node2)
+        
+        # Also ensure no parent node has > 1 parent itself
+        # the non-maximal inbound edge part of the paper
+        for p_node in list(self.h_dag_predict.nodes):
+            parents_of_p_node = list(self.h_dag_predict.predecessors(p_node))
+            if len(parents_of_p_node)>1:
+                # Cut all edges except the one with highest weight
+                for p_p_node in self.get_sorted_parents(p_node)[:-1]:
+                    self.h_dag_predict.remove_edge(p_p_node, p_node)
+
+    # Get the weights of higher connected parent nodes in the H_DAG
+    # only used to cut extra edges in the prediction h_dag
+    def get_sorted_parents(self, p_node):
+        weights=[]
+        parents_of_p_node = list(self.h_dag_predict.predecessors(p_node))
+        for p_p_node in parents_of_p_node:
+            weights.append(self.h_dag_predict[p_p_node][p_node]['WE'])
+            
+        weights, parents_of_p_node = zip(*sorted(zip(weights, parents_of_p_node)))
+        return parents_of_p_node
+
+    # Fitting will require manipulating the h-dag over and over from scratch
+    # so only do it on copies
+    def create_prediction_h_dag(self):
+        self.h_dag_predict = self.h_dag.copy()
+        
+    ##############################################
+    # Functions for cohesion criteria
+    ##############################################
     def level_depth(self, p_node1, p_node2):
         contact_node_heights=[]
         for shared_patch in self.h_dag[p_node1][p_node2]['shared_patches']:
@@ -137,7 +160,8 @@ class chm_graph:
         return 1/np.min([p_node1_min_height, p_node2_min_height])
         
     # The minimum number of cell steps to reach a contact cell
-    # note sure how to do this yet...
+    # note sure how to do this yet.
+    # just the horizontal distance between parent cells and contact cells
     def node_depth(self, p_node1, p_node2):
         pass
 
@@ -150,6 +174,11 @@ class chm_graph:
     # Horizonatl distance between parent cells
     def top_distance(self, p_node1, p_node2):
         return self.get_node_distance(p_node1, p_node2)
+        
+    ##############################################
+    # Functions for building initial dag based off individual
+    # raster cells.
+    ##############################################
     
     # Directed acrylic graph from a 2d image, where children are
     # any neighbor cell with a lower value
