@@ -1,18 +1,15 @@
-from skimage.external import tifffile
-import numpy as np
-from graph_framework import chm_graph
-
 ################################################
 import matplotlib.pyplot as plt
 
-                    
-chm_image = tifffile.imread('OSBS_032_chm.tif')
+import config
+import utils
+import classifiers
+from graph_classifier import graph_classifier
+import framework as F
 
-# Use a 10x10 plot for testing
-#chm_image = chm_image[0:30,0:30]
-g = chm_graph(chm_image)
+training_plots = F.load_plots(plot_list = config.train_plots[1:2], plot_type= 'train')
+training_plots[0].load_chm_graph()
 
-weights = {'LD':2/10,'SR':5/10,'TD':3/10}
-weight_threshold = 5
+model = graph_classifier()
 
-g.apply_segmentation(weight_threshold, weights)
+parameters = {'LD':2/10,'SR':5/10,'TD':3/10, 'wt':5}
