@@ -7,11 +7,11 @@ import networkx as nx
 from skimage.util import view_as_windows
 from itertools import combinations
 class chm_graph:
-    def __init__(self, i):
+    def __init__(self, i, initial_cell_method=4):
         self.image = i
         
         # The initial dag from all gridded cell values
-        self.make_cell_dag()
+        self.make_cell_dag(initial_cell_method=initial_cell_method)
         
         # The heiarchichal dag
         self.make_h_dag()
@@ -84,7 +84,7 @@ class chm_graph:
     # Predicting each original cell in the imaged based on segmentation
     ##############################################
 
-    def get_imagew_predict(self):
+    def get_image_predict(self, labeled=False):
         # A list to store parent ID's (now known as trees) for each original cell. 
         # cells can belong to more than 1, which is resolved in 2 steps
         for cell_node in list(self.cell_dag.nodes):
@@ -117,10 +117,11 @@ class chm_graph:
         for cell_node in list(self.cell_dag.nodes):
             tree_nodes[self.cell_dag.nodes[cell_node]['tree_id']].append(cell_node)
         
-        canopy_labels = np.zeros_like(self.image).astype(bool)
+        canopy_labels = np.zeros_like(self.image)
         for tree_id, tree_cells in tree_nodes.items():
-            tree_mask = np.in1d(self.node_lookup_table, np.array(tree_cells)).reshape(self.image.shape)
-            canopy_labels = np.logical_or(canopy_labels, tree_mask)
+            tree_mask = np.in1d(self.node_lookup_table, np.array(tree_cells)).reshape(self.image.shape)*1
+            tree_mask*=tree_id
+            canopy_labels = np.maximum(canopy_labels, tree_mask)
         
         return canopy_labels
         
@@ -166,6 +167,14 @@ class chm_graph:
             for cohesion_param, cohesion_value in cohesion.items():
                 edge_weight += cohesion_value * weights[cohesion_param]
             self.h_dag_predict[p_node1][p_node2]['WE']=edge_weight
+
+    # For debugging, return all the h_dag weights calculated in
+    # apply_edge_weights
+    def get_edge_weights(self):
+        weights = []
+        for p_node1, p_node2 in list(self.h_dag_predict.edges):
+            weights.append(self.h_dag_predict[p_node1][p_node2]['WE'])
+        return np.array(weights)
 
     def cut_weak_edges(self, wt):
         for p_node1, p_node2 in list(self.h_dag_predict.edges):
@@ -220,7 +229,7 @@ class chm_graph:
         total_shared_cells = len(self.h_dag[p_node1][p_node2]['shared_patches'])
         return total_shared_cells / (p_node1_total_cells + p_node2_total_cells)
     
-    # Horizonatl distance between parent cells
+    # Horizontal distance between parent cells
     def top_distance(self, p_node1, p_node2):
         return self.get_node_distance(p_node1, p_node2)
         
@@ -231,7 +240,7 @@ class chm_graph:
     
     # Directed acrylic graph from a 2d image, where children are
     # any neighbor cell with a lower value
-    def make_cell_dag(self):
+    def make_cell_dag(self, initial_cell_method):
         i = self.image.copy()
         self.num_elements = np.prod(i.shape)
         self.node_lookup_table = np.arange(self.num_elements).reshape(i.shape)
@@ -245,6 +254,11 @@ class chm_graph:
         # Set the ground to infinity so they are not counted as children
         i[i==0] = np.inf
         
+        # To be used if only looking for adjacent cells using 4-way method
+        four_way_mask = np.array([[np.inf, -np.inf, np.inf],
+                                  [-np.inf, np.inf, -np.inf],
+                                  [np.inf, -np.inf, np.inf]])
+        
         #This will iterate over every cell and consider the 8 neighbors
         win_view = view_as_windows(i, (3,3))
         for win_view_row in range(win_view.shape[0]):
@@ -253,8 +267,13 @@ class chm_graph:
                 # Cannot be parent if it's ground
                 if np.isinf(focal_value):
                     continue
+                
                 focal_node = self.node_lookup_table[win_view_row, win_view_col]
-                child_rows, child_cols = np.where(win_view[win_view_row, win_view_col] < focal_value)
+                surrounding_cells = win_view[win_view_row, win_view_col]
+                if initial_cell_method==4:
+                    surrounding_cells = np.maximum(surrounding_cells, four_way_mask)
+                    
+                child_rows, child_cols = np.where(surrounding_cells< focal_value)
                 for i in range(len(child_rows)):
                     child_node = self.node_lookup_table[win_view_row+child_rows[i]-1, 
                                                         win_view_col+child_cols[i]-1]
@@ -263,10 +282,13 @@ class chm_graph:
                     self.cell_dag.add_edge(focal_node, child_node)
     
 ################################################
-chm_image = tifffile.imread('OSBS_006_chm.tif')
+import matplotlib.pyplot as plt
+
+                    
+chm_image = tifffile.imread('OSBS_032_chm.tif')
 
 # Use a 10x10 plot for testing
-chm_image = chm_image[0:30,0:30]
+#chm_image = chm_image[0:30,0:30]
 g = chm_graph(chm_image)
 
 weights = {'LD':2/10,'SR':5/10,'TD':3/10}
