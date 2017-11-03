@@ -55,22 +55,21 @@ from itertools import combinations
 class chm_graph:
     def __init__(self, i):
         self.image = i
-        self.make_p_dag()
+        self.make_cell_dag()
         self.make_h_dag()
         self.assign_h_dag_values()
         
         # The H dag nodes will be named the top level nodes from
         # the patch dag
-        #self.h_dag_nodes = get_top_level_nodes(self.p_dag)
+        #self.h_dag_nodes = get_top_level_nodes(self.cell_dag)
         #self.h_dag.add_nodes_from(self.h_dag_nodes)
     
-    # if two top level p_dag nodes share any patch
-    def get_shared_patches(self, node_1, node_2):
-        node_1_patches = np.array(list(nx.descendants(self.p_dag, node_1)))
-        node_2_patches = np.array(list(nx.descendants(self.p_dag, node_2)))
-        shared = np.in1d(node_1_patches, node_2_patches)
-        return(node_1_patches[shared])
-        #return np.any(np.in1d(node_1_patches, node_2_patches, assume_unique=True))
+    # if two top level cell_dag nodes share any patch
+    def get_shared_patches(self, p_node1, p_node2):
+        p_node1_patches = np.array(list(nx.descendants(self.cell_dag, p_node1)))
+        p_node2_patches = np.array(list(nx.descendants(self.cell_dag, p_node2)))
+        shared = np.in1d(p_node1_patches, p_node2_patches)
+        return(p_node1_patches[shared])
     
     def fill_edges(self):
         pass
@@ -88,7 +87,7 @@ class chm_graph:
         else:
             return x,y
     
-    # Should work in either 2d or 3d
+    # will work in either 2d or 3d
     # euclidean distance of the array locations for now
     def get_node_distance(self, node1, node2, with_z=False):
         node1_loc = np.array(self.node_location(node1, with_z = with_z))
@@ -107,59 +106,59 @@ class chm_graph:
     # edges are made when the heirarchies share cells. . 
     def make_h_dag(self):
         self.h_dag = nx.DiGraph()
-        self.parent_nodes = self.get_top_level_nodes(self.p_dag)
+        self.parent_nodes = self.get_top_level_nodes(self.cell_dag)
         self.h_dag.add_nodes_from(self.parent_nodes)
         
-        for node1, node2 in combinations(self.parent_nodes,2):
-            shared_patches = self.get_shared_patches(node1, node2)
+        for p_node1, p_node2 in combinations(self.parent_nodes,2):
+            shared_patches = self.get_shared_patches(p_node1, p_node2)
             if len(shared_patches)>0:
-                if self.node_image_value(node1) > self.node_image_value(node2):
-                    self.h_dag.add_edge(node1, node2)
-                    self.h_dag[node1][node2]['shared_patches'] = shared_patches
+                if self.node_image_value(p_node1) > self.node_image_value(p_node2):
+                    self.h_dag.add_edge(p_node1, p_node2)
+                    self.h_dag[p_node1][p_node2]['shared_patches'] = shared_patches
                 else:
-                    self.h_dag.add_edge(node2, node1)
-                    self.h_dag[node2][node1]['shared_patches'] = shared_patches
+                    self.h_dag.add_edge(p_node2, p_node1)
+                    self.h_dag[p_node2][p_node1]['shared_patches'] = shared_patches
 
     def assign_h_dag_values(self):
-        for node1, node2 in list(self.h_dag.edges):
+        for p_node1, p_node2 in list(self.h_dag.edges):
             cohesion_criteria = {}
-            cohesion_criteria['LD'] = self.level_depth(node1, node2)
-            cohesion_criteria['SR'] = self.shared_ratio(node1, node2)
-            cohesion_criteria['TD'] = self.top_distance(node1, node2)
-            self.h_dag[node1][node2]['cohesion'] = cohesion_criteria
+            cohesion_criteria['LD'] = self.level_depth(p_node1, p_node2)
+            cohesion_criteria['SR'] = self.shared_ratio(p_node1, p_node2)
+            cohesion_criteria['TD'] = self.top_distance(p_node1, p_node2)
+            self.h_dag[p_node1][p_node2]['cohesion'] = cohesion_criteria
 
     #These are all the different cohesion criteria between h-dag nodes
-    def level_depth(self, node1, node2):
+    def level_depth(self, p_node1, p_node2):
         contact_node_heights=[]
-        for shared_patch in self.h_dag[node1][node2]['shared_patches']:
+        for shared_patch in self.h_dag[p_node1][p_node2]['shared_patches']:
             contact_node_heights.append(self.node_image_value(shared_patch))
-        node1_min_height = np.min(self.node_image_value(node1) - contact_node_heights)
-        node2_min_height = np.min(self.node_image_value(node2) - contact_node_heights)
-        return 1/np.min([node1_min_height, node2_min_height])
+        p_node1_min_height = np.min(self.node_image_value(p_node1) - contact_node_heights)
+        p_node2_min_height = np.min(self.node_image_value(p_node2) - contact_node_heights)
+        return 1/np.min([p_node1_min_height, p_node2_min_height])
         
     # The minimum number of cell steps to reach a contact cell
     # note sure how to do this yet...
-    def node_depth(self, node1, node2):
+    def node_depth(self, p_node1, p_node2):
         pass
 
-    def shared_ratio(self, node1, node2):
-        node1_total_cells = len(nx.descendants(self.p_dag, node1))
-        node2_total_cells = len(nx.descendants(self.p_dag, node2))
-        total_shared_cells = len(self.h_dag[node1][node2]['shared_patches'])
-        return total_shared_cells / (node1_total_cells + node2_total_cells)
+    def shared_ratio(self, p_node1, p_node2):
+        p_node1_total_cells = len(nx.descendants(self.cell_dag, p_node1))
+        p_node2_total_cells = len(nx.descendants(self.cell_dag, p_node2))
+        total_shared_cells = len(self.h_dag[p_node1][p_node2]['shared_patches'])
+        return total_shared_cells / (p_node1_total_cells + p_node2_total_cells)
     
     # Horizonatl distance between parent cells
-    def top_distance(self, node1, node2):
-        return self.get_node_distance(node1, node2)
+    def top_distance(self, p_node1, p_node2):
+        return self.get_node_distance(p_node1, p_node2)
     
     # Directed acrylic graph from a 2d image, where children are
     # any neighbor cell with a lower value
-    def make_p_dag(self):
+    def make_cell_dag(self):
         i = self.image.copy()
         self.num_elements = np.prod(i.shape)
         self.node_lookup_table = np.arange(self.num_elements).reshape(i.shape)
         
-        self.p_dag = nx.DiGraph()
+        self.cell_dag = nx.DiGraph()
         
         # Add a buffer so that a 3x3 moving window will work on edges
         # np.inf ensures the buffer is never considered in dag
@@ -181,9 +180,9 @@ class chm_graph:
                 for i in range(len(child_rows)):
                     child_node = node_lookup_table[win_view_row+child_rows[i]-1, 
                                                    win_view_col+child_cols[i]-1]
-                    self.p_dag.add_nodes_from([focal_node,child_node])
+                    self.cell_dag.add_nodes_from([focal_node,child_node])
     
-                    self.p_dag.add_edge(focal_node, child_node)
+                    self.cell_dag.add_edge(focal_node, child_node)
     
 
 g = chm_graph(chm_image)
