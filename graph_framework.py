@@ -122,6 +122,9 @@ class chm_graph:
             tree_mask*=tree_id
             canopy_labels = np.maximum(canopy_labels, tree_mask)
         
+        if not labeled:
+            canopy_labels[canopy_labels!=0]=1
+            
         return canopy_labels
         
     # The nearest tree, based on tree center, to a cell node
@@ -154,10 +157,10 @@ class chm_graph:
     ##############################################
     # Functions for doing the segmentation of trees in the H-DAG
     ##############################################
-    def apply_segmentation(self, wt, weights):
+    def apply_segmentation(self, **params):
         self.create_prediction_h_dag()
-        self.apply_edge_weights(**weights)
-        self.cut_weak_edges(wt)
+        self.apply_edge_weights(**params)
+        self.cut_weak_edges(params['wt'])
 
     def apply_edge_weights(self, **weights):
         for p_node1, p_node2 in list(self.h_dag_predict.edges):
