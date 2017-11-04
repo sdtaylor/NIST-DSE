@@ -1,6 +1,4 @@
 from skimage.external import tifffile
-import matplotlib.pyplot as plt
-from scipy.sparse import csgraph
 from scipy.ndimage import center_of_mass
 import numpy as np
 import networkx as nx
@@ -8,18 +6,7 @@ import networkx as nx
 chm_image = tifffile.imread('OSBS_006_chm.tif')
 
 # Use a 10x10 plot for testing
-chm_image = chm_image[0:30,0:30]
-
-num_elements = np.prod(chm_image.shape)
-node_lookup_table = np.arange(num_elements).reshape(chm_image.shape)
-
-h_dag = nx.DiGraph()
-h_dag.add_nodes_from(range(num_elements))
-
-
-
-
-
+#chm_image = chm_image[0:30,0:30]
 
 from skimage.util import view_as_windows
 from itertools import combinations
@@ -113,7 +100,7 @@ class chm_graph:
         for tree_id in self.get_top_level_nodes(self.h_dag_predict):
             self.cell_dag.nodes[tree_id]['tree_id'].append(tree_id)
             self.h_dag_predict.nodes[tree_id]['tree_center']=self.get_tree_center(tree_id)
-            for cell_node in list(nx.descendants(self.cell_dag, tree_id)):
+            for cell_node in self.get_all_tree_cells(tree_id):
                 self.cell_dag.nodes[cell_node]['tree_id'].append(tree_id)
                 
         # resolve multiple tree IDs
@@ -122,7 +109,7 @@ class chm_graph:
             if len(tree_ids)==0:
                 raise Exception('cell node has no tree ids: '+str(cell_node))
             elif len(tree_ids)>1:
-                self.cell_dag.nodes[cell_node]['tree_id'] = self.get_nearest_tree(tree_ids)
+                self.cell_dag.nodes[cell_node]['tree_id'] = self.get_nearest_tree(cell_node, tree_ids)
             else:
                 # If everything is sound make it a single id instead of a list
                 self.cell_dag.nodes[cell_node]['tree_id']=tree_ids[0]
@@ -130,7 +117,7 @@ class chm_graph:
     # The nearest tree, based on tree center, to a cell node
     def get_nearest_tree(self, cell_node, tree_ids):
         tree_locations = [self.h_dag_predict.nodes[tree]['tree_center'] for tree in tree_ids]
-        cell_location = np.array(self.get_node_location(cell_node))
+        cell_location = np.array(self.node_location(cell_node))
         tree_distances = [np.sqrt(np.sum((tree_loc - cell_location)**2)) for tree_loc in tree_locations]
         tree_distances, tree_ids = zip(*sorted(zip(tree_distances, tree_ids)))
         return tree_ids[0]
@@ -141,6 +128,18 @@ class chm_graph:
         center = np.array(center_of_mass(tree_mask))
         return center
     
+    # Return *all* cells of a tree, which can include multiple heiarchies
+    def get_all_tree_cells(self, tree_id):
+        all_cells=[]
+        # Cells directly under this tree
+        all_cells.extend(list(nx.descendants(self.cell_dag, tree_id)))
+        
+        # Cells under the connecting sub heiarchies
+        for sub_tree in list(nx.descendants(self.h_dag_predict, tree_id)):
+            all_cells.append(sub_tree)
+            all_cells.extend(list(nx.descendants(self.cell_dag, sub_tree)))
+        
+        return all_cells
     
     ##############################################
     # Functions for doing the segmentation of trees in the H-DAG
