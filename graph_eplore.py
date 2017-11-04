@@ -3,10 +3,6 @@ from scipy.ndimage import center_of_mass
 import numpy as np
 import networkx as nx
 
-chm_image = tifffile.imread('OSBS_006_chm.tif')
-
-# Use a 10x10 plot for testing
-chm_image = chm_image[0:30,0:30]
 
 from skimage.util import view_as_windows
 from itertools import combinations
@@ -266,9 +262,17 @@ class chm_graph:
 
                     self.cell_dag.add_edge(focal_node, child_node)
     
+################################################
+chm_image = tifffile.imread('OSBS_006_chm.tif')
 
+# Use a 10x10 plot for testing
+chm_image = chm_image[0:30,0:30]
 g = chm_graph(chm_image)
 
+weights = {'LD':2/10,'SR':5/10,'TD':3/10}
+weight_threshold = 5
+
+g.apply_segmentation(weight_threshold, weights)
 
 
 
