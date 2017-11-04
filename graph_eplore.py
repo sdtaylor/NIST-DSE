@@ -1,6 +1,7 @@
 from skimage.external import tifffile
 import matplotlib.pyplot as plt
 from scipy.sparse import csgraph
+from scipy.ndimage import center_of_mass
 import numpy as np
 import networkx as nx
 
@@ -33,12 +34,6 @@ class chm_graph:
         self.make_h_dag()
         # The cohesion values
         self.assign_h_dag_values()
-
-        # The H dag nodes will be named the top level nodes from
-        # the patch dag
-        #self.h_dag_nodes = get_top_level_nodes(self.cell_dag)
-        #self.h_dag.add_nodes_from(self.h_dag_nodes)
-    
    
     # The actual image value of a p-dag node
     def node_image_value(self, node):
@@ -103,7 +98,52 @@ class chm_graph:
             self.h_dag[p_node1][p_node2]['cohesion'] = cohesion_criteria
 
     ##############################################
-    # Functions for actually doing the segmentation of trees
+    # Predicting each original cell in the imaged based on segmentation
+    ##############################################
+
+    def get_image_predict(self):
+        # A list to store parent ID's (now known as trees) for each original cell. 
+        # cells can belong to more than 1, which is resolved in 2 steps
+        for cell_node in list(self.cell_dag.nodes):
+            self.cell_dag.nodes[cell_node]['tree_id']=[]
+                
+        # Assign each cell to it's tree id's. The node id's from the final top
+        # level h_dag are now considered the top of the trees. 
+        # Also get the center of each tree to resolve potential conflicts
+        for tree_id in self.get_top_level_nodes(self.h_dag_predict):
+            self.cell_dag.nodes[tree_id]['tree_id'].append(tree_id)
+            self.h_dag_predict.nodes[tree_id]['tree_center']=self.get_tree_center(tree_id)
+            for cell_node in list(nx.descendants(self.cell_dag, tree_id)):
+                self.cell_dag.nodes[cell_node]['tree_id'].append(tree_id)
+                
+        # resolve multiple tree IDs
+        for cell_node in list(self.cell_dag.nodes):
+            tree_ids = self.cell_dag.nodes[cell_node]['tree_id']
+            if len(tree_ids)==0:
+                raise Exception('cell node has no tree ids: '+str(cell_node))
+            elif len(tree_ids)>1:
+                self.cell_dag.nodes[cell_node]['tree_id'] = self.get_nearest_tree(tree_ids)
+            else:
+                # If everything is sound make it a single id instead of a list
+                self.cell_dag.nodes[cell_node]['tree_id']=tree_ids[0]
+        
+    # The nearest tree, based on tree center, to a cell node
+    def get_nearest_tree(self, cell_node, tree_ids):
+        tree_locations = [self.h_dag_predict.nodes[tree]['tree_center'] for tree in tree_ids]
+        cell_location = np.array(self.get_node_location(cell_node))
+        tree_distances = [np.sqrt(np.sum((tree_loc - cell_location)**2)) for tree_loc in tree_locations]
+        tree_distances, tree_ids = zip(*sorted(zip(tree_distances, tree_ids)))
+        return tree_ids[0]
+
+    def get_tree_center(self, tree_id):
+        all_tree_cells = np.array(list(nx.descendants(self.cell_dag, tree_id)))
+        tree_mask = np.in1d(self.node_lookup_table, all_tree_cells).reshape(self.image.shape)
+        center = np.array(center_of_mass(tree_mask))
+        return center
+    
+    
+    ##############################################
+    # Functions for doing the segmentation of trees in the H-DAG
     ##############################################
     def apply_segmentation(self, wt, weights):
         self.create_prediction_h_dag()
@@ -210,7 +250,7 @@ class chm_graph:
                     child_node = node_lookup_table[win_view_row+child_rows[i]-1, 
                                                    win_view_col+child_cols[i]-1]
                     self.cell_dag.add_nodes_from([focal_node,child_node])
-    
+
                     self.cell_dag.add_edge(focal_node, child_node)
     
 
