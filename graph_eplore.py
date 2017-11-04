@@ -6,7 +6,7 @@ import networkx as nx
 chm_image = tifffile.imread('OSBS_006_chm.tif')
 
 # Use a 10x10 plot for testing
-#chm_image = chm_image[0:30,0:30]
+chm_image = chm_image[0:30,0:30]
 
 from skimage.util import view_as_windows
 from itertools import combinations
@@ -88,7 +88,7 @@ class chm_graph:
     # Predicting each original cell in the imaged based on segmentation
     ##############################################
 
-    def get_image_predict(self):
+    def get_imagew_predict(self):
         # A list to store parent ID's (now known as trees) for each original cell. 
         # cells can belong to more than 1, which is resolved in 2 steps
         for cell_node in list(self.cell_dag.nodes):
@@ -113,6 +113,20 @@ class chm_graph:
             else:
                 # If everything is sound make it a single id instead of a list
                 self.cell_dag.nodes[cell_node]['tree_id']=tree_ids[0]
+        
+        # collect final nodes for each tree
+        tree_nodes={}
+        for tree_id in self.get_top_level_nodes(self.h_dag_predict):
+            tree_nodes[tree_id]=[]
+        for cell_node in list(self.cell_dag.nodes):
+            tree_nodes[self.cell_dag.nodes[cell_node]['tree_id']].append(cell_node)
+        
+        canopy_labels = np.zeros_like(self.image).astype(bool)
+        for tree_id, tree_cells in tree_nodes.items():
+            tree_mask = np.in1d(self.node_lookup_table, np.array(tree_cells)).reshape(self.image.shape)
+            canopy_labels = np.logical_or(canopy_labels, tree_mask)
+        
+        return canopy_labels
         
     # The nearest tree, based on tree center, to a cell node
     def get_nearest_tree(self, cell_node, tree_ids):
@@ -246,8 +260,8 @@ class chm_graph:
                 focal_node = self.node_lookup_table[win_view_row, win_view_col]
                 child_rows, child_cols = np.where(win_view[win_view_row, win_view_col] < focal_value)
                 for i in range(len(child_rows)):
-                    child_node = node_lookup_table[win_view_row+child_rows[i]-1, 
-                                                   win_view_col+child_cols[i]-1]
+                    child_node = self.node_lookup_table[win_view_row+child_rows[i]-1, 
+                                                        win_view_col+child_cols[i]-1]
                     self.cell_dag.add_nodes_from([focal_node,child_node])
 
                     self.cell_dag.add_edge(focal_node, child_node)
