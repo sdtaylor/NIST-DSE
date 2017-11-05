@@ -135,7 +135,7 @@ class chm_graph:
         tree_distances, tree_ids = zip(*sorted(zip(tree_distances, tree_ids)))
         return tree_ids[0]
 
-    def get_tree_center(self, tree_id):
+    def get_tree_center(self, tree_id, with_z=False):
         all_tree_cells = np.array(list(nx.descendants(self.cell_dag, tree_id)))
         tree_mask = np.in1d(self.node_lookup_table, all_tree_cells).reshape(self.image.shape)
         center = np.array(center_of_mass(tree_mask))
@@ -223,7 +223,11 @@ class chm_graph:
     # note sure how to do this yet.
     # just the horizontal distance between parent cells and contact cells
     def node_depth(self, p_node1, p_node2):
-        pass
+        contact_node_depths=[]
+        for shared_patch in self.h_dag[p_node1][p_node2]['shared_patches']:
+            distances = [self.get_node_distance(p_node, shared_patch) for p_node in [p_node1,p_node2]]
+            contact_node_depths.extend(distances)
+        return 1/np.min(contact_node_depths)
 
     def shared_ratio(self, p_node1, p_node2):
         p_node1_total_cells = len(nx.descendants(self.cell_dag, p_node1))
@@ -234,7 +238,11 @@ class chm_graph:
     # Horizontal distance between parent cells
     def top_distance(self, p_node1, p_node2):
         return self.get_node_distance(p_node1, p_node2)
+    
+    # Distance between the 3d centroid of each heiarchy
+    def centroid_distance(self, p_node1, p_node2):
         
+        pass
     ##############################################
     # Functions for building initial dag based off individual
     # raster cells.
