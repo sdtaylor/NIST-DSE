@@ -9,7 +9,6 @@ import rasterio
 from rasterio import plot
 from rasterio import features
 import config
-from graph_framework import chm_graph
 
 #Wrapper for individual images. Either RGB, P, M, etc.
 class image_wrapper:
@@ -271,9 +270,6 @@ class plot_wrapper:
 
     def load_image(self, image_type, image_filename=None, image_data=None):
         self.images[image_type] = image_wrapper(filename=image_filename, image_data=image_data)
-
-    def load_chm_graph(self):
-        self.graph = chm_graph(self.images['chm'].image_data)
 
     # Set this images transform info from either a loaded image
     # or directly
